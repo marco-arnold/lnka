@@ -185,6 +185,22 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// For navigation keys, get visible choices once and reuse
+		// This reduces redundant calls from multiple getVisibleChoices() per update
+		var visibleChoices []string
+		needsVisibleChoices := !m.filtering && (isKey(key, m.keys.up...) ||
+			isKey(key, m.keys.down...) ||
+			key == m.keys.goBottom ||
+			isKey(key, m.keys.pageDown...) ||
+			isKey(key, m.keys.pageUp...) ||
+			key == m.keys.selectAll ||
+			key == m.keys.toggleSelect ||
+			key == m.keys.hideToggle)
+
+		if needsVisibleChoices {
+			visibleChoices = m.getVisibleChoices()
+		}
+
 		// Handle up keys (arrow up, k)
 		if isKey(key, m.keys.up...) {
 			if !m.filtering && m.cursor > 0 {
@@ -195,8 +211,7 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle down keys (arrow down, j)
 		if isKey(key, m.keys.down...) {
 			if !m.filtering {
-				choices := m.getVisibleChoices()
-				if m.cursor < len(choices)-1 {
+				if m.cursor < len(visibleChoices)-1 {
 					m.cursor++
 				}
 			}
@@ -212,9 +227,8 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle go to bottom
 		if key == m.keys.goBottom {
 			if !m.filtering {
-				choices := m.getVisibleChoices()
-				if len(choices) > 0 {
-					m.cursor = len(choices) - 1
+				if len(visibleChoices) > 0 {
+					m.cursor = len(visibleChoices) - 1
 				}
 			}
 		}
@@ -222,8 +236,7 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle page down
 		if isKey(key, m.keys.pageDown...) {
 			if !m.filtering {
-				choices := m.getVisibleChoices()
-				m.cursor = min(m.cursor+m.maxVisibleItems, len(choices)-1)
+				m.cursor = min(m.cursor+m.maxVisibleItems, len(visibleChoices)-1)
 			}
 		}
 
@@ -237,8 +250,7 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle select all visible
 		if key == m.keys.selectAll {
 			if !m.filtering {
-				choices := m.getVisibleChoices()
-				for _, choice := range choices {
+				for _, choice := range visibleChoices {
 					if !m.selected[choice] {
 						m.selectItem(choice)
 					}
@@ -270,11 +282,10 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle hide toggle key
 		if key == m.keys.hideToggle {
 			if !m.filtering && len(m.selected) > 0 {
-				// Remember current item before toggle
-				choices := m.getVisibleChoices()
+				// Remember current item before toggle (reuse visibleChoices)
 				var currentItem string
-				if m.cursor >= 0 && m.cursor < len(choices) {
-					currentItem = choices[m.cursor]
+				if m.cursor >= 0 && m.cursor < len(visibleChoices) {
+					currentItem = visibleChoices[m.cursor]
 				}
 
 				// Toggle mode
