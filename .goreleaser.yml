@@ -104,8 +104,12 @@ release:
   footer: |
     **Full Changelog**: https://github.com/marco-arnold/lnka/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-# Homebrew cask for macOS/Linux users
-homebrew_casks:
+# Homebrew formula for macOS/Linux users
+# Note: Using deprecated 'brews' instead of 'homebrew_casks' because:
+# - Casks are for GUI apps and trigger macOS Gatekeeper for unsigned binaries
+# - Formulas are the correct approach for CLI tools
+# - Formulas don't have the same signing requirements
+brews:
   - repository:
       owner: marco-arnold
       name: homebrew-lnka
@@ -113,3 +117,7 @@ homebrew_casks:
     homepage: https://github.com/marco-arnold/lnka
     description: CLI tool for managing symlinks with interactive Terminal UI
     license: MIT
+    install: |
+      bin.install "lnka"
+    test: |
+      system "#{bin}/lnka", "--version"
