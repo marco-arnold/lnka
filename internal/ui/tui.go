@@ -269,32 +269,19 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle hide toggle key
 		if key == m.keys.hideToggle {
-			if !m.filtering {
-				// Only allow toggle if there are selected items
-				if len(m.selected) > 0 {
-					// Remember current item before toggle
-					choices := m.getVisibleChoices()
-					var currentItem string
-					if m.cursor >= 0 && m.cursor < len(choices) {
-						currentItem = choices[m.cursor]
-					}
-
-					// Toggle mode
-					m.hideUnlinked = !m.hideUnlinked
-
-					// Try to keep cursor on the same item
-					newChoices := m.getVisibleChoices()
-					if currentItem != "" {
-						for i, choice := range newChoices {
-							if choice == currentItem {
-								m.cursor = i
-								return m, nil
-							}
-						}
-					}
-					// If item not found, clamp cursor
-					m.clampCursor()
+			if !m.filtering && len(m.selected) > 0 {
+				// Remember current item before toggle
+				choices := m.getVisibleChoices()
+				var currentItem string
+				if m.cursor >= 0 && m.cursor < len(choices) {
+					currentItem = choices[m.cursor]
 				}
+
+				// Toggle mode
+				m.hideUnlinked = !m.hideUnlinked
+
+				// Reposition cursor to maintain position on same item
+				m.repositionCursorAfterModeChange(currentItem)
 			}
 		}
 
@@ -594,6 +581,34 @@ func (m *multiSelectModel) adjustCursorAfterItemRemoved(previousCursor int) {
 	} else {
 		m.cursor = previousCursor
 	}
+}
+
+// repositionCursorAfterModeChange repositions cursor after toggling hideUnlinked mode.
+// It attempts to keep the cursor on the same item (by name) after the mode change.
+// If the item is not found in the new list, it clamps the cursor to valid range.
+//
+// Parameters:
+//   - itemToFind: The item name to search for in the new visible choices
+//
+// State changes:
+//   - Updates m.cursor to point to itemToFind if found
+//   - Falls back to clamping cursor if item not found or itemToFind is empty
+func (m *multiSelectModel) repositionCursorAfterModeChange(itemToFind string) {
+	if itemToFind == "" {
+		m.clampCursor()
+		return
+	}
+
+	newChoices := m.getVisibleChoices()
+	for i, choice := range newChoices {
+		if choice == itemToFind {
+			m.cursor = i
+			return
+		}
+	}
+
+	// Fallback: clamp cursor if item not found
+	m.clampCursor()
 }
 
 // ShowMultiSelect displays an interactive multi-select list in the terminal.

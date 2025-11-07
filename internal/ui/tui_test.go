@@ -897,3 +897,115 @@ func TestShowMultiSelect_CursorPositioning_EmptyEnabled(t *testing.T) {
 		t.Errorf("expected cursor at index 0, got %d", initialCursor)
 	}
 }
+
+// TestRepositionCursorAfterModeChange tests the extracted cursor repositioning method
+func TestRepositionCursorAfterModeChange(t *testing.T) {
+	m := &multiSelectModel{
+		choices: []string{"a.txt", "b.txt", "c.txt", "d.txt"},
+		selected: map[string]bool{
+			"b.txt": true,
+			"d.txt": true,
+		},
+		hideUnlinked: false,
+		cursor:       1, // On b.txt
+	}
+
+	// Toggle to hideUnlinked mode
+	m.hideUnlinked = true
+	m.repositionCursorAfterModeChange("b.txt")
+
+	// Should find b.txt in hideUnlinked list (index 0)
+	visibleChoices := m.getVisibleChoices()
+	if len(visibleChoices) != 2 {
+		t.Errorf("expected 2 visible choices, got %d", len(visibleChoices))
+	}
+	if m.cursor != 0 {
+		t.Errorf("expected cursor at 0 (b.txt in hideUnlinked list), got %d", m.cursor)
+	}
+}
+
+// TestRepositionCursorAfterModeChange_ItemNotFound tests fallback behavior
+func TestRepositionCursorAfterModeChange_ItemNotFound(t *testing.T) {
+	m := &multiSelectModel{
+		choices: []string{"a.txt", "b.txt", "c.txt"},
+		selected: map[string]bool{
+			"a.txt": true,
+		},
+		hideUnlinked: true,
+		cursor:       10, // Invalid
+	}
+
+	// Try to reposition to non-existent item
+	m.repositionCursorAfterModeChange("nonexistent.txt")
+
+	// Should clamp cursor
+	visibleChoices := m.getVisibleChoices()
+	if m.cursor >= len(visibleChoices) {
+		t.Error("cursor should be clamped to valid range")
+	}
+}
+
+// TestRepositionCursorAfterModeChange_EmptyItem tests empty string handling
+func TestRepositionCursorAfterModeChange_EmptyItem(t *testing.T) {
+	m := &multiSelectModel{
+		choices: []string{"a.txt", "b.txt", "c.txt"},
+		cursor:  10, // Out of bounds
+	}
+
+	// Empty string should trigger clamping
+	m.repositionCursorAfterModeChange("")
+
+	// Should clamp cursor to valid range
+	if m.cursor >= len(m.choices) {
+		t.Errorf("cursor should be clamped, got %d", m.cursor)
+	}
+}
+
+// TestHideToggleRefactoring tests the refactored hide toggle logic
+func TestHideToggleRefactoring(t *testing.T) {
+	m := &multiSelectModel{
+		choices: []string{"a.txt", "b.txt", "c.txt", "d.txt"},
+		selected: map[string]bool{
+			"b.txt": true,
+			"c.txt": true,
+		},
+		selectedIndex: make(map[string]int),
+		hideUnlinked:  false,
+		cursor:        1, // On b.txt
+		keys:          defaultKeyBindings,
+		cacheValid:    false, // Ensure cache is invalid
+	}
+
+	// Simulate 'h' key press to toggle hideUnlinked
+	// Get current item
+	choices := m.getVisibleChoices()
+	currentItem := ""
+	if m.cursor >= 0 && m.cursor < len(choices) {
+		currentItem = choices[m.cursor]
+	}
+
+	// Toggle and invalidate cache (like Update does)
+	m.hideUnlinked = !m.hideUnlinked
+	m.cacheValid = false
+
+	// Reposition (using extracted method)
+	m.repositionCursorAfterModeChange(currentItem)
+
+	// Verify hideUnlinked is now true
+	if !m.hideUnlinked {
+		t.Error("hideUnlinked should be true after toggle")
+	}
+
+	// Verify cursor is on b.txt in the new list
+	m.cacheValid = false // Invalidate again before checking
+	newChoices := m.getVisibleChoices()
+	if len(newChoices) != 2 {
+		t.Errorf("expected 2 visible choices in hideUnlinked mode, got %d", len(newChoices))
+	}
+	if m.cursor >= len(newChoices) {
+		t.Errorf("cursor %d is out of bounds for %d choices", m.cursor, len(newChoices))
+	}
+	if newChoices[m.cursor] != "b.txt" {
+		t.Errorf("expected cursor on b.txt, got %s", newChoices[m.cursor])
+	}
+}
