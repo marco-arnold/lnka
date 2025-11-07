@@ -1,3 +1,64 @@
+// Package ui provides terminal user interface components using Bubble Tea.
+//
+// The package includes:
+//   - Multi-select list with filtering and hiding capabilities
+//   - Confirmation dialogs for yes/no prompts
+//   - Keyboard navigation and visual feedback
+//
+// # Key Features
+//
+//   - Filter mode: Press '/' to search through items
+//   - Hide mode: Press 'h' to toggle between all/linked items
+//   - Pagination: Automatically handles large lists
+//   - Smart cursor positioning: Maintains cursor position across mode switches
+//   - Vim-style navigation: j/k for up/down, g/G for top/bottom
+//   - Bulk operations: ctrl+a to select all, ctrl+d to deselect all
+//
+// # Multi-Select UI
+//
+// The multi-select interface allows users to select multiple items from a list
+// with keyboard navigation. Features include:
+//
+//   - Space: Toggle item selection
+//   - j/k or ↑/↓: Navigate items
+//   - g/G: Jump to top/bottom
+//   - PgUp/PgDn or ctrl+b/ctrl+f: Page up/down
+//   - ctrl+a: Select all visible items
+//   - ctrl+d: Deselect all items
+//   - /: Enter filter mode to search
+//   - h: Toggle between showing all items or only linked items
+//   - Enter: Confirm selection
+//   - Esc: Abort
+//
+// Example usage:
+//
+//	files := []string{"file1.txt", "file2.txt", "file3.txt"}
+//	enabled := []string{"file1.txt"}
+//	selected, err := ui.ShowMultiSelect(files, enabled, "Select files", 10)
+//	if err != nil {
+//	    // Handle error (user aborted or other error)
+//	}
+//	// Use selected files
+//
+// # Confirmation Dialog
+//
+// The confirmation dialog shows a simple yes/no prompt:
+//
+//	confirmed, err := ui.ShowConfirmation("Delete all files?")
+//	if err != nil {
+//	    // Handle error (user aborted)
+//	}
+//	if confirmed {
+//	    // Perform action
+//	}
+//
+// # Performance Considerations
+//
+// The UI is optimized for large lists (1000+ items) with:
+//   - O(1) selection/deselection using indexed maps
+//   - Per-cycle caching of visible choices
+//   - Early exit optimization in hideUnlinked mode
+//   - Efficient pagination with smart viewport management
 package ui
 
 import (
@@ -24,9 +85,15 @@ type keyBindings struct {
 	filter       string   // Enter filter mode
 	hideToggle   string   // Toggle hide unlinked items
 	toggleSelect string   // Toggle item selection
-	up           string   // Move cursor up
-	down         string   // Move cursor down
+	up           []string // Move cursor up
+	down         []string // Move cursor down
 	backspace    string   // Delete character in filter mode
+	goTop        string   // Jump to top
+	goBottom     string   // Jump to bottom
+	selectAll    string   // Select all visible items
+	deselectAll  string   // Deselect all items
+	pageDown     []string // Page down
+	pageUp       []string // Page up
 }
 
 // defaultKeyBindings contains the default keyboard shortcuts
@@ -36,9 +103,15 @@ var defaultKeyBindings = keyBindings{
 	filter:       "/",
 	hideToggle:   "h",
 	toggleSelect: " ",
-	up:           "up",
-	down:         "down",
+	up:           []string{"up", "k"},
+	down:         []string{"down", "j"},
 	backspace:    "backspace",
+	goTop:        "g",
+	goBottom:     "G",
+	selectAll:    "ctrl+a",
+	deselectAll:  "ctrl+d",
+	pageDown:     []string{"pgdown", "ctrl+f"},
+	pageUp:       []string{"pgup", "ctrl+b"},
 }
 
 // multiSelectModel is the Bubble Tea model for multi-select UI
@@ -112,19 +185,77 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Handle up key
-		if key == m.keys.up {
+		// Handle up keys (arrow up, k)
+		if isKey(key, m.keys.up...) {
 			if !m.filtering && m.cursor > 0 {
 				m.cursor--
 			}
 		}
 
-		// Handle down key
-		if key == m.keys.down {
+		// Handle down keys (arrow down, j)
+		if isKey(key, m.keys.down...) {
 			if !m.filtering {
 				choices := m.getVisibleChoices()
 				if m.cursor < len(choices)-1 {
 					m.cursor++
+				}
+			}
+		}
+
+		// Handle go to top
+		if key == m.keys.goTop {
+			if !m.filtering {
+				m.cursor = 0
+			}
+		}
+
+		// Handle go to bottom
+		if key == m.keys.goBottom {
+			if !m.filtering {
+				choices := m.getVisibleChoices()
+				if len(choices) > 0 {
+					m.cursor = len(choices) - 1
+				}
+			}
+		}
+
+		// Handle page down
+		if isKey(key, m.keys.pageDown...) {
+			if !m.filtering {
+				choices := m.getVisibleChoices()
+				m.cursor = min(m.cursor+m.maxVisibleItems, len(choices)-1)
+			}
+		}
+
+		// Handle page up
+		if isKey(key, m.keys.pageUp...) {
+			if !m.filtering {
+				m.cursor = max(m.cursor-m.maxVisibleItems, 0)
+			}
+		}
+
+		// Handle select all visible
+		if key == m.keys.selectAll {
+			if !m.filtering {
+				choices := m.getVisibleChoices()
+				for _, choice := range choices {
+					if !m.selected[choice] {
+						m.selectItem(choice)
+					}
+				}
+			}
+		}
+
+		// Handle deselect all
+		if key == m.keys.deselectAll {
+			if !m.filtering {
+				m.selected = make(map[string]bool)
+				m.selectedOrder = []string{}
+				m.selectedIndex = make(map[string]int)
+				// If hideUnlinked was active, switch to show all
+				if m.hideUnlinked {
+					m.hideUnlinked = false
+					m.clampCursor()
 				}
 			}
 		}
@@ -266,7 +397,7 @@ func (m multiSelectModel) View() string {
 	}
 
 	if !m.filtering {
-		helpText += "space: toggle | /: filter"
+		helpText += "space: toggle | j/k/↑/↓: move | g/G: top/bottom | ctrl+a/d: (de)select all"
 		// Add h: option only if there are selected items
 		if len(m.selected) > 0 {
 			if m.hideUnlinked {
@@ -275,7 +406,7 @@ func (m multiSelectModel) View() string {
 				helpText += " | h: linked only"
 			}
 		}
-		helpText += " | enter: confirm | esc: abort"
+		helpText += " | /: filter | enter: confirm | esc: abort"
 	} else {
 		helpText += "type to filter | enter: exit filter | esc: abort"
 	}
@@ -307,9 +438,15 @@ func (m *multiSelectModel) getVisibleChoices() []string {
 	var result []string
 	if m.hideUnlinked {
 		visible := make([]string, 0, len(m.selected))
+		selectedCount := len(m.selected)
+
 		for _, choice := range baseChoices {
 			if m.selected[choice] {
 				visible = append(visible, choice)
+				// Early exit: all selected items found
+				if len(visible) == selectedCount {
+					break
+				}
 			}
 		}
 		result = visible
@@ -454,7 +591,47 @@ func (m *multiSelectModel) adjustCursorAfterItemRemoved(previousCursor int) {
 	}
 }
 
-// ShowMultiSelect displays a multi-select UI for choosing files to enable
+// ShowMultiSelect displays an interactive multi-select list in the terminal.
+//
+// The function presents a list of items to the user with keyboard navigation,
+// filtering, and selection capabilities. Items can be pre-selected by passing
+// them in the currentlyEnabled parameter.
+//
+// Parameters:
+//   - availableFiles: List of all items to display
+//   - currentlyEnabled: Items that should be pre-selected
+//   - title: Optional title to display above the list (can be empty)
+//   - maxVisibleItems: Number of items to show before pagination kicks in
+//
+// Returns:
+//   - []string: Ordered list of selected items (in selection order)
+//   - error: Returns an error if user aborts (esc/ctrl+c) or if availableFiles is empty
+//
+// Keyboard shortcuts:
+//   - Space: Toggle selection of current item
+//   - j/k or ↑/↓: Move cursor up/down
+//   - g/G: Jump to top/bottom of list
+//   - PgUp/PgDn or ctrl+b/ctrl+f: Page up/down
+//   - ctrl+a: Select all visible items
+//   - ctrl+d: Deselect all items
+//   - /: Enter filter mode
+//   - h: Toggle hide unlinked items (only when items are selected)
+//   - Enter: Confirm selection and exit
+//   - Esc/ctrl+c: Abort without saving
+//
+// Example:
+//
+//	files := []string{"config.yaml", "data.json", "notes.txt"}
+//	enabled := []string{"config.yaml"}
+//	selected, err := ShowMultiSelect(files, enabled, "Select files to link", 10)
+//	if err != nil {
+//	    if strings.Contains(err.Error(), "user aborted") {
+//	        fmt.Println("Operation cancelled")
+//	        return
+//	    }
+//	    log.Fatal(err)
+//	}
+//	fmt.Printf("Selected: %v\n", selected)
 func ShowMultiSelect(availableFiles []string, currentlyEnabled []string, title string, maxVisibleItems int) ([]string, error) {
 	if len(availableFiles) == 0 {
 		return nil, fmt.Errorf("no files available to enable")
@@ -589,7 +766,40 @@ func (m confirmModel) View() string {
 	return b.String()
 }
 
-// ShowConfirmation displays a confirmation dialog
+// ShowConfirmation displays a yes/no confirmation dialog in the terminal.
+//
+// The function shows a message with two options (Yes/No) and returns the
+// user's choice. The cursor starts on "Yes" by default.
+//
+// Parameters:
+//   - message: The question or message to display to the user
+//
+// Returns:
+//   - bool: true if user confirmed (pressed enter on "Yes"), false if declined
+//   - error: Returns an error if user aborts (esc/ctrl+c) or if there's a program error
+//
+// Keyboard shortcuts:
+//   - ←/→ or h/l: Move between Yes/No
+//   - Enter: Confirm current selection
+//   - Esc/ctrl+c: Abort (returns error with "user aborted")
+//
+// Example:
+//
+//	confirmed, err := ShowConfirmation("Delete all files?")
+//	if err != nil {
+//	    if strings.Contains(err.Error(), "user aborted") {
+//	        fmt.Println("Cancelled")
+//	        return
+//	    }
+//	    log.Fatal(err)
+//	}
+//	if confirmed {
+//	    // User selected "Yes"
+//	    deleteFiles()
+//	} else {
+//	    // User selected "No"
+//	    fmt.Println("Keeping files")
+//	}
 func ShowConfirmation(message string) (bool, error) {
 	m := confirmModel{
 		message:  message,

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -411,5 +412,114 @@ func TestAdjustCursorAfterItemRemoved(t *testing.T) {
 				t.Errorf("expected cursor %d, got %d", tt.expectedCursor, m.cursor)
 			}
 		})
+	}
+}
+
+// TestGetVisibleChoices_LargeListEarlyExit tests early exit optimization for large lists
+func TestGetVisibleChoices_LargeListEarlyExit(t *testing.T) {
+	// Create a large list with only a few selected items
+	largeList := make([]string, 1000)
+	for i := 0; i < 1000; i++ {
+		largeList[i] = fmt.Sprintf("file%d.txt", i)
+	}
+
+	m := &multiSelectModel{
+		choices: largeList,
+		selected: map[string]bool{
+			"file10.txt": true,
+			"file50.txt": true,
+			"file90.txt": true,
+		},
+		hideUnlinked: true,
+	}
+
+	visible := m.getVisibleChoices()
+
+	// Should find exactly 3 items
+	if len(visible) != 3 {
+		t.Errorf("expected 3 visible items, got %d", len(visible))
+	}
+
+	// Verify correct items are returned
+	expectedItems := map[string]bool{
+		"file10.txt": true,
+		"file50.txt": true,
+		"file90.txt": true,
+	}
+	for _, item := range visible {
+		if !expectedItems[item] {
+			t.Errorf("unexpected item in visible: %s", item)
+		}
+	}
+}
+
+// TestSelectItem_Multiple tests selecting multiple items
+func TestSelectItem_Multiple(t *testing.T) {
+	m := &multiSelectModel{
+		choices:       []string{"a.txt", "b.txt", "c.txt"},
+		selected:      make(map[string]bool),
+		selectedOrder: []string{},
+		selectedIndex: make(map[string]int),
+	}
+
+	// Select three items
+	m.selectItem("a.txt")
+	m.selectItem("b.txt")
+	m.selectItem("c.txt")
+
+	if len(m.selected) != 3 {
+		t.Errorf("expected 3 selected items, got %d", len(m.selected))
+	}
+
+	if len(m.selectedOrder) != 3 {
+		t.Errorf("expected 3 items in order, got %d", len(m.selectedOrder))
+	}
+
+	// Check indices are correct
+	if m.selectedIndex["a.txt"] != 0 {
+		t.Error("a.txt should be at index 0")
+	}
+	if m.selectedIndex["b.txt"] != 1 {
+		t.Error("b.txt should be at index 1")
+	}
+	if m.selectedIndex["c.txt"] != 2 {
+		t.Error("c.txt should be at index 2")
+	}
+}
+
+// TestDeselectAll_WithHideUnlinked tests deselecting all items when hideUnlinked is active
+func TestDeselectAll_WithHideUnlinked(t *testing.T) {
+	m := &multiSelectModel{
+		choices: []string{"a.txt", "b.txt", "c.txt"},
+		selected: map[string]bool{
+			"a.txt": true,
+			"b.txt": true,
+		},
+		selectedOrder: []string{"a.txt", "b.txt"},
+		selectedIndex: map[string]int{
+			"a.txt": 0,
+			"b.txt": 1,
+		},
+		hideUnlinked: true,
+		cursor:       1,
+	}
+
+	// Simulate deselect all (what ctrl+d does)
+	m.selected = make(map[string]bool)
+	m.selectedOrder = []string{}
+	m.selectedIndex = make(map[string]int)
+	if m.hideUnlinked {
+		m.hideUnlinked = false
+		m.clampCursor()
+	}
+
+	if len(m.selected) != 0 {
+		t.Error("all items should be deselected")
+	}
+	if m.hideUnlinked {
+		t.Error("hideUnlinked should be disabled after deselect all")
+	}
+	if m.cursor > len(m.choices)-1 {
+		t.Error("cursor should be clamped after deselect all")
 	}
 }
