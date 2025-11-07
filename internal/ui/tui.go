@@ -73,9 +73,10 @@ const (
 	colorReset  = "\033[0m"
 	colorPrompt = "\033[1;32m" // Bold Green
 	colorDim    = "\033[2;90m" // Dim Gray
-	colorHelp   = "\033[90m"   // Gray
+	colorGray   = "\033[90m"   // Gray
 	colorCursor = "\033[7m"    // Reverse video
 	colorNormal = "\033[0m"    // Normal/White
+	colorBold   = "\033[1m"    // Bold
 )
 
 // keyBindings defines all keyboard shortcuts for the multi-select UI
@@ -133,6 +134,7 @@ type multiSelectModel struct {
 	cachedVisibleChoices []string        // Cached result of getVisibleChoices
 	cacheValid           bool            // Whether the cache is valid
 	keys                 keyBindings     // Keyboard shortcuts configuration
+	width                int             // Terminal width
 }
 
 // Init initializes the model
@@ -156,6 +158,10 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.cacheValid = false
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
+
 	case tea.KeyMsg:
 		key := msg.String()
 
@@ -370,10 +376,10 @@ func (m multiSelectModel) View() string {
 			cursor = "▶"
 		}
 
-		// Text color: dim gray if not selected, normal if selected
-		textStyle := colorDim
+		// Text style: gray if not selected, bold if selected
+		textStyle := colorGray
 		if m.selected[choice] {
-			textStyle = colorNormal
+			textStyle = colorBold
 		}
 
 		b.WriteString(cursor)
@@ -384,9 +390,8 @@ func (m multiSelectModel) View() string {
 		b.WriteString("\n")
 	}
 
-	// Help text with pagination info
+	// Help text with pagination info (as inverse bar spanning full width)
 	b.WriteString("\n")
-	b.WriteString(colorHelp)
 
 	// Build help text starting with pagination info if applicable
 	helpText := ""
@@ -409,7 +414,20 @@ func (m multiSelectModel) View() string {
 		helpText += "type to filter | enter: exit filter | esc: abort"
 	}
 
+	// Pad help text to fill terminal width and display as inverse bar
+	b.WriteString(colorCursor) // Inverse video
+	b.WriteString(" ")
 	b.WriteString(helpText)
+	if m.width > 0 {
+		// Pad with spaces to fill the width (+1 for the leading space)
+		padding := m.width - len(helpText) - 1
+		if padding > 0 {
+			b.WriteString(strings.Repeat(" ", padding))
+		}
+	} else {
+		// Fallback: just add some padding if width is unknown
+		b.WriteString(" ")
+	}
 	b.WriteString(colorReset)
 
 	return b.String()
@@ -747,6 +765,7 @@ type confirmModel struct {
 	message  string
 	selected bool // true = yes, false = no
 	aborted  bool
+	width    int // Terminal width
 }
 
 func (m confirmModel) Init() tea.Cmd {
@@ -755,6 +774,10 @@ func (m confirmModel) Init() tea.Cmd {
 
 func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
@@ -799,8 +822,22 @@ func (m confirmModel) View() string {
 	b.WriteString("  ")
 	b.WriteString(noStyle)
 	b.WriteString("\n\n")
-	b.WriteString(colorHelp)
-	b.WriteString("arrows: move | enter/y/n: select | esc: abort")
+
+	// Help text as inverse bar spanning full width
+	helpText := "arrows: move | enter/y/n: select | esc: abort"
+	b.WriteString(colorCursor) // Inverse video
+	b.WriteString(" ")
+	b.WriteString(helpText)
+	if m.width > 0 {
+		// Pad with spaces to fill the width (+1 for the leading space)
+		padding := m.width - len(helpText) - 1
+		if padding > 0 {
+			b.WriteString(strings.Repeat(" ", padding))
+		}
+	} else {
+		// Fallback: just add some padding if width is unknown
+		b.WriteString(" ")
+	}
 	b.WriteString(colorReset)
 
 	return b.String()
