@@ -37,6 +37,9 @@ go build ./...
 # Run the main program
 go run . /path/to/source /path/to/target
 
+# Run with debug logging
+go run . /path/to/source /path/to/target --debug debug.log
+
 # Build with specific output
 go build -o lnka
 ```
@@ -61,8 +64,40 @@ go tool cover -html=coverage.out
 ```
 
 ### Code Quality
+
+**Using Makefile (recommended):**
 ```bash
-# Format code
+# Run all checks (fmt, vet, test) - use before every commit
+make check
+
+# Format code with goimports and go fmt
+make fmt
+
+# Run go vet
+make vet
+
+# Run tests
+make test
+
+# Generate coverage report (creates coverage.html)
+make coverage
+
+# Build the project
+make build
+
+# Clean build artifacts
+make clean
+
+# Show all available targets
+make help
+```
+
+**Manual commands:**
+```bash
+# Format code with goimports (auto-fixes unused imports)
+goimports -w .
+
+# Format code with go fmt
 go fmt ./...
 
 # Run linter (requires golangci-lint installation)
@@ -71,6 +106,30 @@ golangci-lint run
 # Vet code for suspicious constructs
 go vet ./...
 ```
+
+**Note:** `goimports` is preferred over `go fmt` as it automatically manages imports (adds missing, removes unused). Install with:
+```bash
+go install golang.org/x/tools/cmd/goimports@latest
+```
+
+### Debugging
+```bash
+# Enable debug logging during development
+go run . /path/to/source /path/to/target --debug debug.log
+
+# View debug logs in real-time
+tail -f debug.log
+
+# Or watch logs while using the TUI
+tail -f debug.log &
+go run . /path/to/source /path/to/target --debug debug.log
+```
+
+Debug logging captures key events:
+- Async file loading (available files and enabled files)
+- User interactions (toggle, select all, deselect all)
+- Mode changes (filter mode, hide mode)
+- Selection state changes
 
 ### Release Management
 ```bash
@@ -89,13 +148,17 @@ git push origin v0.1.0
 ```
 lnka/
 ├── main.go                           # Entry point with cobra CLI & version info
+├── Makefile                          # Build automation (check, fmt, test, build, etc.)
 ├── internal/
 │   ├── config/
 │   │   └── config.go                # Configuration management
 │   ├── filesystem/
 │   │   └── symlinks.go              # Symlink operations (create, remove, validate)
 │   └── ui/
-│       └── tui.go                   # Terminal UI with bubbletea (multi-select, filter)
+│       ├── tui.go                   # Terminal UI with bubbletea (multi-select, filter)
+│       ├── types.go                 # Message types and list item implementation
+│       ├── commands.go              # Async command functions
+│       └── debug.go                 # Debug logging utility
 ├── .github/
 │   └── workflows/
 │       └── release.yml              # GitHub Actions for automated releases
@@ -118,14 +181,17 @@ lnka/
 
 **Environment Variables:**
 - `LNKA_TITLE`: Optional title for the TUI
-- `LNKA_MAX`: Maximum visible items before pagination (default: 10)
 
 **CLI Flags:**
 - `--title`, `-t`: Title to display in UI
-- `--max`, `-m`: Maximum items to show before pagination
 - `--version`, `-v`: Print version information
+- `--debug`, `-d`: Enable debug logging to specified file (e.g., `--debug debug.log`)
 
 ## Dependencies
 
 - **github.com/charmbracelet/bubbletea**: TUI framework for interactive interface
 - **github.com/spf13/cobra**: CLI framework for command-line parsing
+
+## Importend Rules
+
+- Run `make check` after each change

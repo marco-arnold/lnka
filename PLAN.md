@@ -9,13 +9,17 @@ Build a Go CLI tool with Terminal UI for managing symlinks between source and ta
 ```
 lnka/
 ├── main.go                           # Entry point with cobra CLI & version info
+├── Makefile                          # Build automation (check, fmt, vet, test, coverage, build)
 ├── internal/
 │   ├── config/
 │   │   └── config.go                # Configuration management
 │   ├── filesystem/
 │   │   └── symlinks.go              # Symlink operations (create, remove, validate)
 │   └── ui/
-│       └── tui.go                   # Terminal UI with bubbletea (multi-select, filter)
+│       ├── tui.go                   # Terminal UI main logic (models, update, view)
+│       ├── types.go                 # Message types and list item implementation
+│       ├── commands.go              # Async command functions (file loading)
+│       └── debug.go                 # Debug logging utility
 ├── .github/
 │   └── workflows/
 │       └── release.yml              # GitHub Actions for automated releases
@@ -30,6 +34,8 @@ lnka/
 
 ## Dependencies
 - **github.com/charmbracelet/bubbletea** v1.3.10 - TUI framework
+- **github.com/charmbracelet/bubbles** v0.21.0 - Reusable Bubble Tea components
+- **github.com/charmbracelet/lipgloss** v1.1.0 - Terminal styling
 - **github.com/spf13/cobra** v1.10.1 - CLI framework
 
 ## Implementation Status
@@ -46,7 +52,7 @@ lnka/
   - `SourceDir` string (first positional argument)
   - `TargetDir` string (second positional argument)
   - `Title` string (from `--title`/`-t` flag or `LNKA_TITLE` env)
-  - `MaxVisibleItems` int (from `--max`/`-m` flag or `LNKA_MAX` env, default: 10)
+  - `DebugLog` string (from `--debug`/`-d` flag for debug logging to file)
 - ✅ Validation: ensure both directories are provided and exist
 - ✅ No defaults for directories - always require explicit arguments
 
@@ -60,8 +66,28 @@ lnka/
 - ✅ `CleanOrphanedSymlinks(enabledDir string, orphaned []string) error` - Remove broken symlinks
 - ✅ `ApplyChanges(availableDir, enabledDir string, selectedFiles []string) error` - Apply selection
 
-#### 4. Terminal UI (`internal/ui/tui.go`)
-Using **pure bubbletea** (no huh):
+#### 4. Terminal UI (`internal/ui/`)
+Refactored architecture using **Bubble Tea with bubbles/list component**:
+
+**Core Components:**
+- ✅ `tui.go` - Main UI logic:
+  - `multiSelectModel` with bubbles/list.Model integration
+  - Keyboard navigation with custom keyMap
+  - Async file loading via Init()
+  - Smart selection management with selectedMap and selectedOrder
+  - Auto-disable hideUnlinked mode when no items selected
+  - Help system integration (short/full help with ?)
+- ✅ `types.go` - Data structures:
+  - `filesLoadedMsg` for async file loading
+  - `itemsRefreshedMsg` for item list rebuilds
+  - `fileItem` implementing list.Item interface
+  - `fileItemDelegate` for custom rendering
+- ✅ `commands.go` - Async commands:
+  - `loadFilesCmd()` for parallel file loading
+- ✅ `debug.go` - Debug logging:
+  - `logDebug()` function for development tracing
+
+**Features:**
 - ✅ Multi-select interface with all files from source directory
 - ✅ Pre-select files that are already enabled (symlinks exist)
 - ✅ Toggle selection with space, navigate with arrow keys
@@ -70,29 +96,45 @@ Using **pure bubbletea** (no huh):
 - ✅ Bulk operations: ctrl+a (select all), ctrl+d (deselect all)
 - ✅ Filter mode: press `/` to filter list (case-insensitive)
 - ✅ Hide mode: press `h` to toggle between all/linked items
-- ✅ Enter confirms selection, ESC aborts
-- ✅ Cursor: filled triangle `▶`
-- ✅ Visual feedback: dim gray for unselected, normal for selected
-- ✅ Pagination with configurable max visible items
-- ✅ Pagination indicator in navbar
-- ✅ Smart cursor positioning across mode switches
-- ✅ ANSI color codes for styling
+- ✅ Enter confirms selection, ctrl+c aborts
+- ✅ Visual feedback:
+  - Bold green cursor marker (`>`) for selected item at cursor
+  - Green cursor marker (not bold) for unselected item at cursor
+  - Bold text for linked items
+  - Gray text for unlinked items
+- ✅ Built-in help system (press `?` to toggle short/full help)
+- ✅ Async file loading with loading state
+- ✅ Smart item list rebuilding after mode changes
 - ✅ Confirmation dialog for orphaned symlink cleanup
 - ✅ Comprehensive package documentation with examples
-- ✅ Unit test coverage: 18.5% (22 tests)
+- ✅ Inline documentation for all functions and methods
 
 #### 5. Main Entry Point (`main.go`)
 - ✅ Cobra CLI framework with positional arguments
-- ✅ Flags: `--title`/`-t`, `--max`/`-m`, `--version`/`-v`
-- ✅ Environment variables: `LNKA_TITLE`, `LNKA_MAX`
+- ✅ Flags: `--title`/`-t`, `--debug`/`-d`, `--version`/`-v`
+- ✅ Environment variables: `LNKA_TITLE`
+- ✅ Debug logging to file via `--debug` flag (e.g., `--debug debug.log`)
 - ✅ Load configuration
 - ✅ Validate symlinks and prompt for cleanup
-- ✅ Launch TUI
+- ✅ Launch TUI with async file loading
 - ✅ Apply symlink changes based on user selection
 - ✅ Exit silently on success, exit code 1 on abort
 - ✅ Version information embedded via ldflags
 
-#### 6. Release Management
+#### 6. Build Management (`Makefile`)
+- ✅ Automated build tasks:
+  - `make check` - Run all checks (fmt, vet, test) - use before commits
+  - `make fmt` - Format code with goimports and go fmt
+  - `make vet` - Run go vet for suspicious constructs
+  - `make test` - Run all tests
+  - `make coverage` - Generate HTML coverage report
+  - `make build` - Build the binary
+  - `make clean` - Clean build artifacts
+  - `make help` - Show all available targets
+- ✅ Uses goimports for automatic import management
+- ✅ Integrated into development workflow
+
+#### 7. Release Management
 - ✅ `.goreleaser.yml` configuration
   - Static binaries for Linux, macOS, Windows (amd64, arm64)
   - Archives with README and LICENSE
@@ -112,14 +154,16 @@ Using **pure bubbletea** (no huh):
 lnka /path/to/source /path/to/target
 
 # With options
-lnka /path/to/source /path/to/target --title "My Files" --max 15
+lnka /path/to/source /path/to/target --title "My Files"
 
 # Using shorthand flags
-lnka /path/to/source /path/to/target -t "My Files" -m 15
+lnka /path/to/source /path/to/target -t "My Files"
+
+# With debug logging
+lnka /path/to/source /path/to/target --debug debug.log
 
 # Using environment variables
 export LNKA_TITLE="My Files"
-export LNKA_MAX=15
 lnka /path/to/source /path/to/target
 
 # Show version
@@ -127,11 +171,11 @@ lnka --version
 ```
 
 ## User Flow
-1. Start tool with source and target directory arguments
-2. If orphaned symlinks detected → prompt user to clean them (yes/no confirmation)
-3. Display multi-select TUI with all available files from source directory
-4. Files already enabled (existing symlinks in target) are pre-selected
-5. Cursor starts on first selected item (if any)
+1. Start tool with source and target directory arguments (optional: debug logging)
+2. Files are loaded asynchronously from source and target directories
+3. If orphaned symlinks detected → prompt user to clean them (yes/no confirmation)
+4. Display multi-select TUI with all available files from source directory
+5. Files already enabled (existing symlinks in target) are pre-selected
 6. User can:
    - Navigate with arrow keys or j/k (Vim-style)
    - Jump to top/bottom with g/G
@@ -139,10 +183,11 @@ lnka --version
    - Toggle selection with space
    - Select all visible items with ctrl+a
    - Deselect all items with ctrl+d
-   - Filter list by pressing `/` (case-insensitive search)
+   - Filter list by pressing `/` (case-insensitive search built into bubbles/list)
    - Hide unlinked items by pressing `h` (only shows selected items)
+   - Show help by pressing `?` (toggle short/full help)
    - Confirm with Enter
-   - Abort with ESC or ctrl+c
+   - Abort with ctrl+c
 7. Tool calculates diff:
    - Create symlinks in target for newly selected files
    - Remove symlinks from target for deselected files
@@ -151,65 +196,78 @@ lnka --version
 9. Exit with code 1 on abort (no error message)
 
 ## Key Features
-- ✅ Multi-select TUI for file selection
+- ✅ Multi-select TUI for file selection using bubbles/list component
 - ✅ Configuration via positional arguments, CLI flags, and ENV vars
+- ✅ Asynchronous file loading for responsive startup
+- ✅ Debug logging to file for development and troubleshooting
 - ✅ Automatic detection and cleanup of orphaned symlinks
 - ✅ Validation of existing symlinks
 - ✅ Pre-selection of currently enabled files
-- ✅ Filter mode for searching files
+- ✅ Built-in filter mode with fuzzy search (bubbles/list)
 - ✅ Hide mode for showing only linked items
+- ✅ Integrated help system (short/full help with `?`)
 - ✅ Vim-style keyboard shortcuts (j/k, g/G)
 - ✅ Bulk selection operations (ctrl+a, ctrl+d)
 - ✅ Relative symlink creation when beneficial
 - ✅ Clear error handling and user feedback
-- ✅ Pagination for long file lists with visual indicator
+- ✅ Custom rendering with lipgloss styling
 - ✅ Version information embedded in binary
 - ✅ Automated releases via GoReleaser and GitHub Actions
+- ✅ Makefile for development workflow automation
 
-## TUI Performance Optimizations (2025-11-07)
+## TUI Architecture Refactoring (Bubble Tea Migration)
 
-The Terminal UI has been extensively optimized for performance and usability:
+The Terminal UI has been refactored to use the official Bubble Tea component library:
 
-### Code Quality Improvements
-- ✅ **Refactored selection logic**: Extracted 7 helper methods from nested code
-  - `handleToggleSelection()`, `selectItem()`, `deselectItem()`
-  - `removeFromOrder()`, `handleHideUnlinkedAfterDeselect()`
-  - `switchToShowAllMode()`, `adjustCursorAfterItemRemoved()`
-- ✅ **Structured key bindings**: Replaced magic strings with `keyBindings` struct
-- ✅ **Helper functions**: Added `isKey()` for cleaner key matching
+### Architecture Changes
+- ✅ **Migrated to bubbles/list**: Replaced custom list implementation with `github.com/charmbracelet/bubbles/list`
+  - Built-in filtering with fuzzy search
+  - Built-in pagination and scrolling
+  - Built-in help system integration
+  - Standard keyboard navigation (handled by component)
+- ✅ **Modular code organization**: Split into multiple files for better maintainability
+  - `tui.go` - Main UI logic, models, Update/View functions
+  - `types.go` - Message types and list item implementation
+  - `commands.go` - Async command functions
+  - `debug.go` - Debug logging utilities
+- ✅ **Custom rendering**: Implemented `fileItemDelegate` for styled item rendering
+  - Bold green cursor marker for selected items
+  - Gray styling for unlinked items
+  - Bold styling for linked items
+  - Lipgloss integration for consistent styling
 
-### Performance Optimizations
-- ✅ **O(1) selection/deselection**: Using `selectedIndex map[string]int`
-  - Previously: O(n) linear search through slice
-  - Now: Instant lookup with index updates
-- ✅ **Per-cycle caching**: `getVisibleChoices()` results cached within update cycle
-  - Reduces redundant calculations by up to 80%
-- ✅ **Early exit optimization**: In hideUnlinked mode, stops iterating after finding all selected items
-  - Example: 1000 files with 3 selected → stops after ~3-90 iterations instead of 1000
+### Performance & Behavior
+- ✅ **Async file loading**: Files loaded in Init() via tea.Cmd
+  - Non-blocking startup
+  - Loading state displayed to user
+  - Error handling for file loading failures
+- ✅ **O(1) selection/deselection**: Using `selectedMap map[string]bool`
+  - Instant lookup for item selection state
+  - Separate `selectedOrder` slice maintains selection order
+- ✅ **Smart item list rebuilding**: Efficient updates after mode changes
+  - `buildItemList()` respects hideUnlinked mode
+  - `rebuildItemsCmd()` triggers list refresh via message
+  - `refreshCurrentItem()` updates single item efficiently
 
 ### User Experience Enhancements
-- ✅ **Pagination indicator**: Shows "11-20 of 150" in navbar
-- ✅ **Initial cursor positioning**: Starts on first selected item
-- ✅ **Smart cursor management**: Maintains position across mode switches
-- ✅ **Visual separator**: Line above list when no title/filter shown
-- ✅ **Auto-disable hideUnlinked**: When last linked item is deselected
-- ✅ **Comprehensive help text**: Shows all available keyboard shortcuts
+- ✅ **Built-in help system**: Press `?` to toggle short/full help
+  - Custom keybindings integrated into help display
+  - Short help shows essential shortcuts
+  - Full help includes all available commands (including ctrl+c abort)
+- ✅ **Auto-disable hideUnlinked**: Automatically disables when no items selected
+  - Prevents empty list confusion
+  - Checked after deselection operations
+- ✅ **Smart cursor management**: Cursor position maintained by bubbles/list
+- ✅ **Filter integration**: Built-in filter mode with `/` key
+  - Fuzzy search through bubbles/list
+  - Visual feedback during filtering
+  - Enter to exit filter mode
 
 ### Documentation
-- ✅ **Package-level documentation**: Complete overview with examples
-- ✅ **Function documentation**: Detailed docs for `ShowMultiSelect()` and `ShowConfirmation()`
-- ✅ **Performance notes**: O(1) operations, caching strategy, optimization details
-- ✅ **Keyboard shortcut reference**: Full list in package docs
-
-### Test Coverage
-- ✅ **22 unit tests** covering:
-  - Filtering logic (hideUnlinked, filter mode, combined)
-  - Cursor management (clamping, positioning, bounds)
-  - Selection operations (select, deselect, bulk operations)
-  - Cache behavior and invalidation
-  - Edge cases (empty lists, out of bounds)
-  - Helper functions (isKey, removeFromOrder)
-- ✅ **18.5% code coverage** (focused on core logic)
+- ✅ **Comprehensive package documentation**: Complete overview with usage examples
+- ✅ **Function documentation**: Detailed docs for all public functions
+- ✅ **Inline documentation**: Comments for models, methods, and key logic
+- ✅ **Architecture notes**: Explains async loading, message types, and component integration
 
 ## Release Process
 ```bash
