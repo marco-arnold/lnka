@@ -367,3 +367,108 @@ func containsMiddle(s, substr string) bool {
 	}
 	return false
 }
+
+// TestSetCursorToFile tests positioning cursor on a specific filename
+func TestSetCursorToFile(t *testing.T) {
+	items := []list.Item{
+		fileItem{name: "a.txt", isEnabled: false},
+		fileItem{name: "b.txt", isEnabled: true},
+		fileItem{name: "c.txt", isEnabled: false},
+		fileItem{name: "d.txt", isEnabled: true},
+	}
+
+	l := list.New(items, fileItemDelegate{}, 80, 20)
+	m := &multiSelectModel{
+		list: l,
+	}
+
+	// Test finding existing file
+	m.setCursorToFile("c.txt")
+	selected := m.list.SelectedItem()
+	if fi, ok := selected.(fileItem); ok {
+		if fi.name != "c.txt" {
+			t.Errorf("Expected cursor on c.txt, got %s", fi.name)
+		}
+	} else {
+		t.Error("Expected fileItem, got different type")
+	}
+
+	// Test cursor position
+	if m.list.Index() != 2 {
+		t.Errorf("Expected cursor at index 2, got %d", m.list.Index())
+	}
+}
+
+// TestSetCursorToFile_NotFound tests behavior when file not in list
+func TestSetCursorToFile_NotFound(t *testing.T) {
+	items := []list.Item{
+		fileItem{name: "a.txt", isEnabled: false},
+		fileItem{name: "b.txt", isEnabled: true},
+	}
+
+	l := list.New(items, fileItemDelegate{}, 80, 20)
+	l.Select(1) // Position on b.txt
+
+	m := &multiSelectModel{
+		list: l,
+	}
+
+	originalIndex := m.list.Index()
+
+	// Try to find non-existent file
+	m.setCursorToFile("nonexistent.txt")
+
+	// Cursor should stay at original position
+	if m.list.Index() != originalIndex {
+		t.Errorf("Expected cursor to stay at index %d, got %d", originalIndex, m.list.Index())
+	}
+}
+
+// TestSetCursorToFile_EmptyString tests behavior with empty filename
+func TestSetCursorToFile_EmptyString(t *testing.T) {
+	items := []list.Item{
+		fileItem{name: "a.txt", isEnabled: false},
+		fileItem{name: "b.txt", isEnabled: true},
+	}
+
+	l := list.New(items, fileItemDelegate{}, 80, 20)
+	l.Select(1)
+
+	m := &multiSelectModel{
+		list: l,
+	}
+
+	originalIndex := m.list.Index()
+
+	// Try with empty string
+	m.setCursorToFile("")
+
+	// Cursor should stay at original position
+	if m.list.Index() != originalIndex {
+		t.Errorf("Expected cursor to stay at index %d, got %d", originalIndex, m.list.Index())
+	}
+}
+
+// TestRebuildItemsCmdWithCursor tests that cursor filename is preserved in message
+func TestRebuildItemsCmdWithCursor(t *testing.T) {
+	m := &multiSelectModel{
+		availableFiles: []string{"a.txt", "b.txt", "c.txt"},
+		selectedMap:    map[string]bool{"b.txt": true},
+	}
+
+	cmd := m.rebuildItemsCmdWithCursor("b.txt")
+	msg := cmd()
+
+	refreshMsg, ok := msg.(itemsRefreshedMsg)
+	if !ok {
+		t.Fatal("Expected itemsRefreshedMsg")
+	}
+
+	if refreshMsg.cursorFileName != "b.txt" {
+		t.Errorf("Expected cursorFileName to be b.txt, got %s", refreshMsg.cursorFileName)
+	}
+
+	if len(refreshMsg.items) != 3 {
+		t.Errorf("Expected 3 items, got %d", len(refreshMsg.items))
+	}
+}

@@ -21,7 +21,8 @@ type filesLoadedMsg struct {
 // itemsRefreshedMsg is sent when the item list needs to be rebuilt
 // (e.g., after toggling hideUnlinked mode or changing selections)
 type itemsRefreshedMsg struct {
-	items []list.Item
+	items          []list.Item
+	cursorFileName string // Optional: filename to position cursor on after rebuild
 }
 
 // fileItem represents a single file in the list

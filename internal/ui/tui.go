@@ -226,6 +226,12 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case itemsRefreshedMsg:
 		// Item list was rebuilt (e.g., after hideUnlinked toggle)
 		cmd := m.list.SetItems(msg.items)
+
+		// If a cursor filename was specified, try to position cursor on that item
+		if msg.cursorFileName != "" {
+			m.setCursorToFile(msg.cursorFileName)
+		}
+
 		return m, cmd
 
 	case tea.WindowSizeMsg:
@@ -308,9 +314,17 @@ func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle hide toggle (H)
 		if key.Matches(msg, m.keys.HideToggle) {
 			if !isFiltering && len(m.selectedMap) > 0 {
+				// Remember current cursor position before toggling
+				var currentFileName string
+				if item := m.list.SelectedItem(); item != nil {
+					if fi, ok := item.(fileItem); ok {
+						currentFileName = fi.name
+					}
+				}
+
 				m.hideUnlinked = !m.hideUnlinked
-				logDebug("HideToggle: hideUnlinked=%t", m.hideUnlinked)
-				return m, m.rebuildItemsCmd()
+				logDebug("HideToggle: hideUnlinked=%t, preserving cursor on: %s", m.hideUnlinked, currentFileName)
+				return m, m.rebuildItemsCmdWithCursor(currentFileName)
 			}
 		}
 
@@ -431,6 +445,39 @@ func (m *multiSelectModel) rebuildItemsCmd() tea.Cmd {
 		items := m.buildItemList()
 		return itemsRefreshedMsg{items: items}
 	}
+}
+
+// rebuildItemsCmdWithCursor returns a command that rebuilds the item list
+// and preserves cursor position on the specified filename
+func (m *multiSelectModel) rebuildItemsCmdWithCursor(fileName string) tea.Cmd {
+	return func() tea.Msg {
+		items := m.buildItemList()
+		return itemsRefreshedMsg{
+			items:          items,
+			cursorFileName: fileName,
+		}
+	}
+}
+
+// setCursorToFile positions the cursor on the item with the specified filename
+// If the file is not found in the current list, cursor stays at current position
+func (m *multiSelectModel) setCursorToFile(fileName string) {
+	if fileName == "" {
+		return
+	}
+
+	items := m.list.Items()
+	for i, item := range items {
+		if fi, ok := item.(fileItem); ok {
+			if fi.name == fileName {
+				m.list.Select(i)
+				logDebug("setCursorToFile: positioned cursor on %s at index %d", fileName, i)
+				return
+			}
+		}
+	}
+
+	logDebug("setCursorToFile: file %s not found in list, cursor unchanged", fileName)
 }
 
 // View renders the UI
