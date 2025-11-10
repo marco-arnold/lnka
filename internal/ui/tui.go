@@ -80,7 +80,7 @@ const (
 	helpBarReservedLines = 4
 )
 
-// Lipgloss styles for terminal UI
+// lipgloss styles for terminal UI
 var (
 	stylePrompt = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10")) // Bold Green
 
