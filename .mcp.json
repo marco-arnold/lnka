@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "lsmcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@mizchi/lsmcp",
+        "-p",
+        "gopls"
+      ],
+      "env": {}
+    },
+    "bubbletea-docs": {
+      "type": "http",
+      "url": "https://gitmcp.io/charmbracelet/bubbletea"
+    }
+  }
+}
