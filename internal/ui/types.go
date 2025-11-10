@@ -9,6 +9,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Lipgloss styles for file item rendering
+// These are defined at package level to avoid repeated allocations during rendering
+var (
+	// Cursor styles (item under cursor with ">")
+	styleCursorEnabled  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10")) // Bold green for cursor on linked
+	styleCursorDisabled = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))            // Green (not bold) for cursor on unlinked
+
+	// Normal item styles (not under cursor)
+	styleEnabled  = lipgloss.NewStyle().Bold(true)                        // Bold for linked items
+	styleDisabled = lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Gray for unlinked
+)
+
 // Message types for async operations
 
 // filesLoadedMsg is sent when both available and enabled files have been loaded
@@ -51,36 +63,31 @@ func (d fileItemDelegate) Spacing() int { return 0 }
 func (d fileItemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
 
 // Render draws a single item in the list
+// Uses pre-defined package-level styles to avoid repeated allocations
 func (d fileItemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
 	fi, ok := listItem.(fileItem)
 	if !ok {
 		return
 	}
 
-	// Styles for different states
-	cursorEnabledStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10")) // Bold green for cursor on linked
-	cursorDisabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))           // Green (not bold) for cursor on unlinked
-	enabledStyle := lipgloss.NewStyle().Bold(true)                                        // Bold for linked items
-	disabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))                // Gray for unlinked
-
 	// Render based on cursor position
 	if index == m.Index() {
 		// Current cursor position with ">"
 		if fi.isEnabled {
 			// Linked item at cursor: bold green
-			fmt.Fprint(w, cursorEnabledStyle.Render("> "+fi.name))
+			fmt.Fprint(w, styleCursorEnabled.Render("> "+fi.name))
 		} else {
 			// Unlinked item at cursor: green (not bold)
-			fmt.Fprint(w, cursorDisabledStyle.Render("> "+fi.name))
+			fmt.Fprint(w, styleCursorDisabled.Render("> "+fi.name))
 		}
 	} else {
 		// Normal item: styled based on selection status
 		if fi.isEnabled {
 			// Linked items are bold
-			fmt.Fprint(w, enabledStyle.Render("  "+fi.name))
+			fmt.Fprint(w, styleEnabled.Render("  "+fi.name))
 		} else {
 			// Unlinked items are gray
-			fmt.Fprint(w, disabledStyle.Render("  "+fi.name))
+			fmt.Fprint(w, styleDisabled.Render("  "+fi.name))
 		}
 	}
 }
