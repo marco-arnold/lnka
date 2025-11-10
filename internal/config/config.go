@@ -10,10 +10,9 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	SourceDir       string
-	TargetDir       string
-	Title           string
-	MaxVisibleItems int
+	SourceDir string
+	TargetDir string
+	Title     string
 }
 
 // Load loads configuration from cobra command
@@ -34,11 +33,6 @@ func Load(cmd *cobra.Command, args []string) (*Config, error) {
 	cfg.Title, err = cmd.Flags().GetString("title")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get title flag: %w", err)
-	}
-
-	cfg.MaxVisibleItems, err = cmd.Flags().GetInt("max")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get max flag: %w", err)
 	}
 
 	// Validate configuration

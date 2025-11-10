@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marco-arnold/lnka/internal/config"
 	"github.com/marco-arnold/lnka/internal/filesystem"
 	"github.com/marco-arnold/lnka/internal/ui"
@@ -38,16 +39,11 @@ func init() {
 	titleDefault := os.Getenv("LNKA_TITLE")
 	rootCmd.Flags().StringP("title", "t", titleDefault, "Title to display in UI (env: LNKA_TITLE)")
 
-	maxDefault := 10
-	if envMax := os.Getenv("LNKA_MAX"); envMax != "" {
-		if val, err := fmt.Sscanf(envMax, "%d", &maxDefault); err == nil && val == 1 {
-			// Successfully parsed env var
-		}
-	}
-	rootCmd.Flags().IntP("max", "m", maxDefault, "Maximum items to show before pagination (env: LNKA_MAX)")
-
 	// Add version flag
 	rootCmd.Flags().BoolP("version", "v", false, "Print version information")
+
+	// Add debug flag
+	rootCmd.Flags().StringP("debug", "d", "", "Enable debug logging to specified file (e.g., debug.log)")
 }
 
 func printVersion() {
@@ -68,6 +64,19 @@ func run(cmd *cobra.Command, args []string) error {
 	if versionFlag, _ := cmd.Flags().GetBool("version"); versionFlag {
 		printVersion()
 		return nil
+	}
+
+	// Setup debug logging if debug flag is set
+	debugFile, _ := cmd.Flags().GetString("debug")
+	if debugFile != "" {
+		// Remove existing debug file to start fresh
+		_ = os.Remove(debugFile)
+
+		f, err := tea.LogToFile(debugFile, "lnka")
+		if err != nil {
+			return fmt.Errorf("failed to setup debug logging: %w", err)
+		}
+		defer f.Close()
 	}
 
 	// Load configuration
@@ -106,25 +115,8 @@ func run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// List available files
-	availableFiles, err := filesystem.ListAvailableFiles(cfg.SourceDir)
-	if err != nil {
-		return fmt.Errorf("failed to list available files: %w", err)
-	}
-
-	if len(availableFiles) == 0 {
-		fmt.Println("No files found in source directory")
-		return nil
-	}
-
-	// Get currently enabled files
-	currentlyEnabled, err := filesystem.GetEnabledFiles(cfg.SourceDir, cfg.TargetDir)
-	if err != nil {
-		return fmt.Errorf("failed to get enabled files: %w", err)
-	}
-
-	// Show multi-select UI
-	selectedFiles, err := ui.ShowMultiSelect(availableFiles, currentlyEnabled, cfg.Title, cfg.MaxVisibleItems)
+	// Show multi-select UI (loads files asynchronously in Init())
+	selectedFiles, err := ui.ShowFileSelect(cfg.SourceDir, cfg.TargetDir, cfg.Title)
 	if err != nil {
 		if strings.Contains(err.Error(), "user aborted") {
 			os.Exit(1)
