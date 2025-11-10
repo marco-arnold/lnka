@@ -192,6 +192,6 @@ lnka/
 - **github.com/charmbracelet/bubbletea**: TUI framework for interactive interface
 - **github.com/spf13/cobra**: CLI framework for command-line parsing
 
-## Importend Rules
+## Important Rules
 
 - Run `make check` after each change
